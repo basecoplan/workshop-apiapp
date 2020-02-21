@@ -1,24 +1,38 @@
-from fastapi import FastAPI
-from pydantic import BaseModel
+from typing import List
+
+from fastapi import Depends, FastAPI
+from sqlalchemy.orm import Session
+
+from . import crud, models, schemas
+from .database import SessionLocal, engine
 
 app = FastAPI()
 
 
-class UserCreate(BaseModel):
-    email: str
-    password: str
+def get_db():
+    try:
+        db = SessionLocal()
+        yield db
+    finally:
+        db.close()
 
 
-@app.get("/")
-def read_root():
-    return {"Hello": "World"}
+@app.get("/users/", response_model=List[schemas.User])
+def read_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    users = crud.get_users(db, skip=skip, limit=limit)
+    return users
 
 
-@app.get("/users/{user_id}")
-def read_users(user_id: int):
-    return {"id": user_id, "email": "alexeyguk@gmail.com"}
+@app.get("/users/{user_id}", response_model=schemas.User)
+def read_user(user_id: int, db: Session = Depends(get_db)):
+    return crud.get_user(db, user_id=user_id)
 
 
-@app.post("/users")
-def create_user(user: UserCreate):
-    return user
+@app.post("/users", response_model=schemas.User)
+def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
+    return crud.create_user(db, user=user)
+
+
+@app.on_event("startup")
+def startup_event():
+    models.Base.metadata.create_all(bind=engine)
